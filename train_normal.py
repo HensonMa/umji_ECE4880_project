@@ -2,7 +2,8 @@ import torch
 import torch.quantization as tq
 import torch.nn as nn
 import os
-from vgg19_quantized import *
+from vgg19_brevitas import *
+from vgg import *
 from torchvision import datasets
 import torchvision.transforms as transforms
 import time
@@ -12,7 +13,6 @@ import matplotlib.pyplot as plt
 from torch.optim.lr_scheduler import StepLR
 from utils import *
 import argparse
-from vgg import *
 
 
 class Normal_trainer:
@@ -45,6 +45,8 @@ class Normal_trainer:
         self.logspace = args.logspace
         self.lr_step_size = args.lr_step_size
         self.lr_step_gamma = args.lr_step_gamma
+        self.bit_width = args.bit_width
+        self.depth = args.depth
 
         self.save_hparam(args)
 
@@ -57,7 +59,9 @@ class Normal_trainer:
 
     def prepare_model(self):
         if self.model_name == "vgg19":
-            self.model = vgg19(num_class=self.num_class, dataset=self.type)
+            self.model = vgg19_bn(num_class=self.num_class, dataset=self.type)
+        elif self.model_name == "vgg19_quantized":
+            self.model = vgg19_quantized(num_class=self.num_class, dataset=self.type, batch_norm=True, bit_width=self.bit_width, depth=self.depth)
 
         if self.start_epoch != 0:
             self.load_latest_epoch()
@@ -161,8 +165,7 @@ class Normal_trainer:
 
     def test(self, epoch):
         self.model.eval()
-        self.model.cpu()
-        # self.model.to(self.device)
+        self.model.to(self.device)
 
         Loss, Acc_num = 0, 0
         bt_id = 0
@@ -170,8 +173,8 @@ class Normal_trainer:
         for (img, lbl) in tqdm(self.test_loader):
             with torch.no_grad():
                 bt_id += 1
-                # img = img.to(self.device)
-                # lbl = lbl.to(self.device)
+                img = img.to(self.device)
+                lbl = lbl.to(self.device)
 
                 start_time = time.time()
                 output = self.model(img)
@@ -179,16 +182,14 @@ class Normal_trainer:
                 if type(output).__name__ == 'tuple':
                     output = output[0]
                 loss = self.loss_func(output, lbl)
-                # pre = output.detach().max(1)[1]
-                pre = output.max(1)[1]
+                pre = output.detach().max(1)[1]
                 acc_num = (pre == lbl).sum().float().item()
                 Acc_num += acc_num
 
-                # Loss += loss.cpu().item()
-                Loss += loss.item()
+                Loss += loss.cpu().item()
             inference_time.append(end_time-start_time)
 
-        print("[test epoch {}] loss: %.3f, acc: %.3f, infer(cpu): %.3f s / per batch of size {}".format(epoch, self.bs) % (Loss / (bt_id + 1), Acc_num / len(self.test_set), sum(inference_time)/len(inference_time)))
+        print("[test epoch {}] loss: %.3f, acc: %.3f, infer(gpu): %.3f s / per batch of size {}".format(epoch, self.bs) % (Loss / (bt_id + 1), Acc_num / len(self.test_set), sum(inference_time)/len(inference_time)))
 
         self.list[2].append(Loss / (bt_id + 1))
         self.list[3].append(Acc_num / len(self.test_set))
@@ -298,21 +299,23 @@ def main():
     parser.add_argument("--horizontal_flip", default=True, type=bool)
     parser.add_argument("--result_dir", default='pretrained_models', type=str)
     parser.add_argument("--device", default=0, type=int)
-    parser.add_argument("--root", default='../Region/data/tiny-imagenet-200', type=str)
+    parser.add_argument("--root", default='./cifar10_data', type=str)
     parser.add_argument("--lr", default=0.1, type=float)
     parser.add_argument("--lr-schedule", default='step', type=str)
     parser.add_argument("--logspace", default=1, type=int)
     parser.add_argument("--lr-step-size", default=50, type=int)
     parser.add_argument("--lr-step-gamma", default=0.1, type=float)
     parser.add_argument("--epoch-num", default=100, type=int)  # 150
-    parser.add_argument("--start-epoch", default=101, type=int)
+    parser.add_argument("--start-epoch", default=0, type=int)
     parser.add_argument("--momentum", default=0.9, type=float)
     parser.add_argument("--weight-decay", default=1e-4, type=float)
     parser.add_argument("--batchsize", default=512, type=int)
-    parser.add_argument("--type", default="imagenet", type=str)
-    parser.add_argument("--num-class", default=200, type=int)
-    parser.add_argument("--model-name", default="vgg19", type=str)
+    parser.add_argument("--type", default="cifar10", type=str)
+    parser.add_argument("--num-class", default=10, type=int)
+    parser.add_argument("--model-name", default="vgg19_quantized", type=str)
     parser.add_argument("--seed", default=0, type=int)
+    parser.add_argument("--bit-width", default=4, type=int)
+    parser.add_argument("--depth", default=[5], type=int, nargs='+')
 
     args = parser.parse_args()
     os.environ['CUDA_VISIBLE_DEVICES'] = str(args.device)
@@ -324,13 +327,18 @@ def main():
     else:
         raise RuntimeError("no such learning rate!")
 
-    args.result_path = "./" + args.result_dir + "/" + args.model_name + "_" + args.type + \
-                       "/Normal_seed{}_lr{}_{}_epoch{}".format(args.seed, args.lr, lr_setting, args.epoch_num)
+    if "quantized" in args.model_name:
+        args.result_path = "./" + args.result_dir + "/" + args.model_name + "_" + args.type + \
+                           "/bitWidth{}_depth{}_seed{}_lr{}_{}_epoch{}".format(args.bit_width, args.depth, args.seed, args.lr, lr_setting, args.epoch_num)
+    else:
+        args.result_path = "./" + args.result_dir + "/" + args.model_name + "_" + args.type + \
+                           "/seed{}_lr{}_{}_epoch{}".format(args.seed, args.lr, lr_setting, args.epoch_num)
 
+    print(args.result_path)
     seed_torch(args.seed)
     args.data_path = args.root
     trainer = Normal_trainer(args)
-    trainer.benchmark()
+    trainer.work()
 
 
 if __name__ == "__main__":
