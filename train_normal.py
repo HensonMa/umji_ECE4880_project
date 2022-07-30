@@ -299,7 +299,7 @@ def main():
     parser.add_argument("--horizontal_flip", default=True, type=bool)
     parser.add_argument("--result_dir", default='pretrained_models', type=str)
     parser.add_argument("--device", default=0, type=int)
-    parser.add_argument("--root", default='./cifar10_data', type=str)
+    parser.add_argument("--root", default='./tiny-imagenet-200', type=str)
     parser.add_argument("--lr", default=0.1, type=float)
     parser.add_argument("--lr-schedule", default='step', type=str)
     parser.add_argument("--logspace", default=1, type=int)
@@ -310,12 +310,12 @@ def main():
     parser.add_argument("--momentum", default=0.9, type=float)
     parser.add_argument("--weight-decay", default=1e-4, type=float)
     parser.add_argument("--batchsize", default=512, type=int)
-    parser.add_argument("--type", default="cifar10", type=str)
-    parser.add_argument("--num-class", default=10, type=int)
+    parser.add_argument("--type", default="imagenet", type=str)
+    parser.add_argument("--num-class", default=200, type=int)
     parser.add_argument("--model-name", default="vgg19_quantized", type=str)
     parser.add_argument("--seed", default=0, type=int)
-    parser.add_argument("--bit-width", default=4, type=int)
-    parser.add_argument("--depth", default=[5], type=int, nargs='+')
+    parser.add_argument("--bit-width", default=4, type=int) # 2, 4, 6, 8
+    parser.add_argument("--depth", default=[5], type=int, nargs='+') # [1, 2, 3, 4, 5], [3, 4, 5], [4, 5], [5]
 
     args = parser.parse_args()
     os.environ['CUDA_VISIBLE_DEVICES'] = str(args.device)
