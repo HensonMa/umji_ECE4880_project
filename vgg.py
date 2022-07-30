@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 
+
 cfg = {
     'A': [64, 'M', 128, 'M', 256, 256, 'M', 512, 512, 'M', 512, 512, 'M'],
     'B': [64, 64, 'M', 128, 128, 'M', 256, 256, 'M', 512, 512, 'M', 512, 512, 'M'],
@@ -88,8 +89,8 @@ def vgg16_bn():
     return VGG(make_layers(cfg['D'], batch_norm=True))
 
 
-def vgg19_bn():
-    return VGG(make_layers(cfg['E'], batch_norm=True))
+def vgg19_bn(num_class=10, dataset="cifar10"):
+    return VGG(make_layers(cfg['E'], batch_norm=True), num_class=num_class, dataset=dataset)
 
 
 class ConvBNReLU(nn.Sequential):
